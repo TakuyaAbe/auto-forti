@@ -44,20 +44,8 @@ app-bundle: release icon
 	@# Bundle OpenSSL dylibs
 	@cp $(OPENSSL_LIB)/libssl.3.dylib "$(APP_FRAMEWORKS)/"
 	@cp $(OPENSSL_LIB)/libcrypto.3.dylib "$(APP_FRAMEWORKS)/"
-	@# Fix openfortivpn dylib paths to use bundled libs
-	@install_name_tool -change \
-		$(OPENSSL_LIB)/libssl.3.dylib \
-		@executable_path/../Frameworks/libssl.3.dylib \
-		"$(APP_MACOS)/openfortivpn"
-	@install_name_tool -change \
-		$(OPENSSL_LIB)/libcrypto.3.dylib \
-		@executable_path/../Frameworks/libcrypto.3.dylib \
-		"$(APP_MACOS)/openfortivpn"
-	@# Fix libssl's reference to libcrypto
-	@install_name_tool -change \
-		$(OPENSSL_LIB)/libcrypto.3.dylib \
-		@executable_path/../Frameworks/libcrypto.3.dylib \
-		"$(APP_FRAMEWORKS)/libssl.3.dylib"
+	@# Fix all dylib references dynamically (handles any OpenSSL install path)
+	@Scripts/fix-dylib-paths.sh "$(APP_MACOS)/openfortivpn" "$(APP_FRAMEWORKS)"
 	@# Re-sign modified binaries (ad-hoc)
 	@codesign --force --sign - "$(APP_FRAMEWORKS)/libcrypto.3.dylib"
 	@codesign --force --sign - "$(APP_FRAMEWORKS)/libssl.3.dylib"
