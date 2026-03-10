@@ -18,7 +18,7 @@ final class WelcomeWindowController {
             backing: .buffered,
             defer: false
         )
-        w.title = "AutoForti へようこそ"
+        w.title = L10n.welcomeTitle
         w.center()
         w.isReleasedWhenClosed = false
 
@@ -49,14 +49,14 @@ final class WelcomeWindowController {
 
         // Description
         let descText = """
-        FortiVPN にメニューバーからワンクリックで接続できるアプリです。
+        \(L10n.welcomeDescription)
 
-        機能:
-        • メニューバーからVPN接続/切断
-        • 起動時の自動接続
-        • Keychainによる安全な認証情報管理
+        \(L10n.features)
+        • \(L10n.featureConnect)
+        • \(L10n.featureAutoConnect)
+        • \(L10n.featureKeychain)
 
-        まず、VPN接続に必要な設定を行います。
+        \(L10n.welcomeNext)
         """
         let descLabel = NSTextField(wrappingLabelWithString: descText)
         descLabel.font = NSFont.systemFont(ofSize: 13)
@@ -72,7 +72,7 @@ final class WelcomeWindowController {
         stackView.addArrangedSubview(spacer)
 
         // Start button
-        let startButton = NSButton(title: "設定を始める", target: nil, action: nil)
+        let startButton = NSButton(title: L10n.getStarted, target: nil, action: nil)
         startButton.bezelStyle = .rounded
         startButton.keyEquivalent = "\r"
         startButton.font = NSFont.systemFont(ofSize: 14, weight: .medium)

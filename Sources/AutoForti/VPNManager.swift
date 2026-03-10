@@ -10,16 +10,21 @@ enum VPNState: Sendable {
 
     var displayName: String {
         switch self {
-        case .disconnected: "未接続"
-        case .connecting: "接続中..."
-        case .connected: "接続済み"
-        case .disconnecting: "切断中..."
-        case .error(let msg): "エラー: \(msg)"
+        case .disconnected: L10n.disconnected
+        case .connecting: L10n.connecting
+        case .connected: L10n.connected
+        case .disconnecting: L10n.disconnecting
+        case .error(let msg): L10n.error(msg)
         }
     }
 
     var isConnected: Bool {
         if case .connected = self { return true }
+        return false
+    }
+
+    var isDisconnecting: Bool {
+        if case .disconnecting = self { return true }
         return false
     }
 }
@@ -55,7 +60,7 @@ final class VPNManager {
         }
 
         guard let creds = KeychainManager.shared.loadCredentials() else {
-            state = .error("認証情報が未設定です")
+            state = .error(L10n.credentialsNotSet)
             return
         }
 
@@ -80,7 +85,7 @@ final class VPNManager {
             try FileManager.default.setAttributes(
                 [.posixPermissions: 0o600], ofItemAtPath: configURL.path)
         } catch {
-            state = .error("設定ファイル作成失敗: \(error.localizedDescription)")
+            state = .error(L10n.configFileError(error.localizedDescription))
             return
         }
         tempConfigURL = configURL
@@ -121,10 +126,10 @@ final class VPNManager {
                 self.cleanupTempConfig()
                 NSLog("[AutoForti] openfortivpn exited with status \(proc.terminationStatus)")
                 NSLog("[AutoForti] output: \(self.outputBuffer)")
-                if self.state.isConnected || self.state.displayName.starts(with: "切断") {
+                if self.state.isConnected || self.state.isDisconnecting {
                     self.state = .disconnected
                 } else if case .connecting = self.state {
-                    self.state = .error("接続に失敗しました (exit \(proc.terminationStatus))")
+                    self.state = .error(L10n.connectionFailed(proc.terminationStatus))
                 } else {
                     self.state = .disconnected
                 }
@@ -137,7 +142,7 @@ final class VPNManager {
             self.process = proc
         } catch {
             cleanupTempConfig()
-            state = .error("プロセス起動失敗: \(error.localizedDescription)")
+            state = .error(L10n.processStartFailed(error.localizedDescription))
         }
     }
 
@@ -213,7 +218,7 @@ final class VPNManager {
         if outputBuffer.contains("Tunnel is up and running") {
             state = .connected
         } else if outputBuffer.contains("Could not authenticate to gateway") {
-            state = .error("認証に失敗しました")
+            state = .error(L10n.authFailed)
             process?.terminate()
         } else if outputBuffer.contains("ERROR") {
             // Extract trusted cert hash from error for auto-setup
@@ -231,10 +236,10 @@ final class VPNManager {
         process?.terminate()
 
         let alert = NSAlert()
-        alert.messageText = "サーバー証明書の確認"
-        alert.informativeText = "サーバーの証明書ハッシュ:\n\(hash)\n\nこの証明書を信頼しますか？"
-        alert.addButton(withTitle: "信頼する")
-        alert.addButton(withTitle: "キャンセル")
+        alert.messageText = L10n.certDialogTitle
+        alert.informativeText = L10n.certDialogMessage(hash)
+        alert.addButton(withTitle: L10n.trust)
+        alert.addButton(withTitle: L10n.cancel)
         alert.alertStyle = .warning
 
         let response = alert.runModal()

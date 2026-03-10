@@ -18,7 +18,7 @@ final class SetupWindowController {
             backing: .buffered,
             defer: false
         )
-        w.title = "AutoForti 設定"
+        w.title = L10n.setupTitle
         w.center()
         w.isReleasedWhenClosed = false
 
@@ -29,7 +29,7 @@ final class SetupWindowController {
         let config = ConfigManager.shared
 
         // Labels and fields
-        let labels = ["サーバー:", "ポート:", "ユーザー名:", "パスワード:", "Trusted Cert:"]
+        let labels = [L10n.server, L10n.port, L10n.username, L10n.password, "Trusted Cert:"]
         let fields: [NSTextField] = labels.enumerated().map { index, _ in
             let field = index == 3
                 ? NSSecureTextField(frame: .zero)
@@ -45,7 +45,7 @@ final class SetupWindowController {
         fields[2].stringValue = existing?.username ?? ""
         fields[3].stringValue = existing?.password ?? ""
         fields[4].stringValue = existing?.trustedCert ?? ""
-        fields[4].placeholderString = "自動取得されます（空欄可）"
+        fields[4].placeholderString = L10n.trustedCertPlaceholder
 
         let stackView = NSStackView()
         stackView.orientation = .vertical
@@ -72,7 +72,7 @@ final class SetupWindowController {
         }
 
         // Auto-connect checkbox
-        let autoConnectCheck = NSButton(checkboxWithTitle: "起動時に自動接続", target: nil, action: nil)
+        let autoConnectCheck = NSButton(checkboxWithTitle: L10n.autoConnectOnLaunch, target: nil, action: nil)
         autoConnectCheck.state = config.autoConnect ? .on : .off
         stackView.addArrangedSubview(autoConnectCheck)
 
@@ -81,11 +81,11 @@ final class SetupWindowController {
         buttonRow.orientation = .horizontal
         buttonRow.spacing = 8
 
-        let saveButton = NSButton(title: "保存", target: nil, action: nil)
+        let saveButton = NSButton(title: L10n.save, target: nil, action: nil)
         saveButton.bezelStyle = .rounded
         saveButton.keyEquivalent = "\r"
 
-        let cancelButton = NSButton(title: "キャンセル", target: nil, action: nil)
+        let cancelButton = NSButton(title: L10n.cancel, target: nil, action: nil)
         cancelButton.bezelStyle = .rounded
         cancelButton.keyEquivalent = "\u{1b}"
 
@@ -112,8 +112,8 @@ final class SetupWindowController {
 
             guard !server.isEmpty, !username.isEmpty, !password.isEmpty else {
                 let alert = NSAlert()
-                alert.messageText = "入力エラー"
-                alert.informativeText = "サーバー、ユーザー名、パスワードは必須です。"
+                alert.messageText = L10n.inputError
+                alert.informativeText = L10n.fieldsRequired
                 alert.alertStyle = .warning
                 alert.runModal()
                 return

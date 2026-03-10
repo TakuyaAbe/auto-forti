@@ -29,10 +29,10 @@ final class StatusBarController {
         statusMenuItem.title = state.displayName
         switch state {
         case .disconnected, .error:
-            toggleMenuItem.title = "接続"
+            toggleMenuItem.title = L10n.connect
             toggleMenuItem.isEnabled = true
         case .connected:
-            toggleMenuItem.title = "切断"
+            toggleMenuItem.title = L10n.disconnect
             toggleMenuItem.isEnabled = true
         case .connecting, .disconnecting:
             toggleMenuItem.title = state.displayName
@@ -51,25 +51,25 @@ final class StatusBarController {
     }
 
     private func setupMenu() {
-        statusMenuItem = NSMenuItem(title: "未接続", action: nil, keyEquivalent: "")
+        statusMenuItem = NSMenuItem(title: L10n.disconnected, action: nil, keyEquivalent: "")
         statusMenuItem.isEnabled = false
         menu.addItem(statusMenuItem)
 
         menu.addItem(.separator())
 
-        toggleMenuItem = NSMenuItem(title: "接続", action: #selector(toggleVPN), keyEquivalent: "v")
+        toggleMenuItem = NSMenuItem(title: L10n.connect, action: #selector(toggleVPN), keyEquivalent: "v")
         toggleMenuItem.target = self
         menu.addItem(toggleMenuItem)
 
         menu.addItem(.separator())
 
-        let settingsItem = NSMenuItem(title: "設定...", action: #selector(openSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: L10n.settings, action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(title: "終了", action: #selector(quit), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: L10n.quit, action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
     }

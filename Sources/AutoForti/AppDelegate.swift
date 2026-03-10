@@ -42,17 +42,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Ensure sudoers is configured (shows macOS admin password dialog if needed)
         if !SudoersManager.shared.isConfigured() {
             let alert = NSAlert()
-            alert.messageText = "初期設定"
-            alert.informativeText = "VPN接続にはシステム権限の設定が必要です。\n管理者パスワードの入力を求められます。"
-            alert.addButton(withTitle: "設定する")
-            alert.addButton(withTitle: "終了")
+            alert.messageText = L10n.initialSetupTitle
+            alert.informativeText = L10n.initialSetupMessage
+            alert.addButton(withTitle: L10n.configure)
+            alert.addButton(withTitle: L10n.quit)
             alert.alertStyle = .informational
 
             if alert.runModal() == .alertFirstButtonReturn {
                 if !SudoersManager.shared.setupWithAdminPrompt() {
                     let errAlert = NSAlert()
-                    errAlert.messageText = "設定に失敗しました"
-                    errAlert.informativeText = "管理者権限の設定ができませんでした。\nアプリを終了します。"
+                    errAlert.messageText = L10n.setupFailedTitle
+                    errAlert.informativeText = L10n.setupFailedMessage
                     errAlert.alertStyle = .critical
                     errAlert.runModal()
                     NSApp.terminate(nil)
