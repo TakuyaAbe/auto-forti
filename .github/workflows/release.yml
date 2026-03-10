@@ -46,7 +46,7 @@ jobs:
             2. DMG を開き、AutoForti.app を Applications にドラッグ
             3. ターミナルで検疫属性を解除:
                ```
-               xattr -cr /Applications/AutoForti.app
+               sudo xattr -cr /Applications/AutoForti.app
                ```
             4. アプリを起動（初回のみ管理者パスワードが必要）
 

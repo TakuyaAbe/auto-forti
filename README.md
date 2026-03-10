@@ -10,7 +10,7 @@ macOS メニューバーから FortiVPN にワンクリックで接続/切断で
 2. DMG を開き、AutoForti.app を Applications にドラッグ
 3. **初回起動前に検疫属性を解除** (Apple Developer ID 未署名のため):
    ```bash
-   xattr -cr /Applications/AutoForti.app
+   sudo xattr -cr /Applications/AutoForti.app
    ```
 4. アプリを起動
 
