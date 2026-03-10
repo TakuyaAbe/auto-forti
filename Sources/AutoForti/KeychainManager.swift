@@ -60,4 +60,9 @@ final class KeychainManager {
     func hasCredentials() -> Bool {
         loadCredentials() != nil
     }
+
+    func isConfigured() -> Bool {
+        guard let creds = loadCredentials() else { return false }
+        return !creds.server.isEmpty && !creds.username.isEmpty && !creds.password.isEmpty
+    }
 }

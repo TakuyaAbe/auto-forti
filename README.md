@@ -34,7 +34,6 @@ make release
 ## 機能
 
 - メニューバーからワンクリック接続/切断
-- SF Symbols アイコン (`lock.shield` / `lock.shield.fill`)
 - Keychain に認証情報を安全に保存 (単一エントリ)
 - 一時設定ファイル経由でパスワードを渡す (プロセス一覧に非露出)
 - サーバー証明書の自動取得・確認ダイアログ
@@ -64,5 +63,14 @@ Sources/AutoForti/
 | `make run` | ビルド & 起動 |
 | `make dmg` | DMG 作成 |
 | `make app-bundle` | .app バンドル作成 |
+| `make icon` | アプリアイコン生成 |
 | `make setup` | sudoers 手動設定 (通常不要) |
 | `make clean` | ビルド成果物削除 |
+
+## 依存関係
+
+このアプリは [openfortivpn](https://github.com/adrienverge/openfortivpn) (GPL-3.0) を外部プロセスとして呼び出します。openfortivpn のバイナリはバンドルされず、ユーザーが別途インストールする必要があります。
+
+## ライセンス
+
+MIT License - [LICENSE](LICENSE) を参照

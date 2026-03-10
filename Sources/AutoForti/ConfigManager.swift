@@ -7,6 +7,7 @@ final class ConfigManager {
     private let defaults = UserDefaults.standard
     private let portKey = "vpn.port"
     private let autoConnectKey = "vpn.autoConnect"
+    private let hasLaunchedKey = "app.hasLaunched"
 
     private init() {}
 
@@ -21,5 +22,10 @@ final class ConfigManager {
     var autoConnect: Bool {
         get { defaults.bool(forKey: autoConnectKey) }
         set { defaults.set(newValue, forKey: autoConnectKey) }
+    }
+
+    var hasLaunched: Bool {
+        get { defaults.bool(forKey: hasLaunchedKey) }
+        set { defaults.set(newValue, forKey: hasLaunchedKey) }
     }
 }

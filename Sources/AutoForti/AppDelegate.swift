@@ -4,6 +4,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController!
     private var setupWindowController: SetupWindowController!
+    private var welcomeWindowController: WelcomeWindowController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon (menu bar only app)
@@ -15,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Initialize controllers
         statusBarController = StatusBarController()
         setupWindowController = SetupWindowController()
+        welcomeWindowController = WelcomeWindowController()
 
         // Wire up events
         statusBarController.onToggleVPN = { @MainActor @Sendable [weak self] in
@@ -26,6 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupWindowController.onSave = { @MainActor @Sendable [weak self] in
             self?.handleSettingsSaved()
+        }
+
+        welcomeWindowController.onContinue = { @MainActor @Sendable [weak self] in
+            self?.setupWindowController.showWindow()
         }
 
         // VPN state changes → status bar updates
@@ -61,8 +67,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Check for existing openfortivpn process
         VPNManager.shared.checkExistingProcess()
 
-        // Show setup on first launch if no credentials
-        if !KeychainManager.shared.hasCredentials() {
+        // First launch: show welcome screen
+        // Settings incomplete: show setup window
+        // Otherwise: auto-connect if enabled
+        if !ConfigManager.shared.hasLaunched {
+            ConfigManager.shared.hasLaunched = true
+            welcomeWindowController.showWindow()
+        } else if !KeychainManager.shared.isConfigured() {
             setupWindowController.showWindow()
         } else if ConfigManager.shared.autoConnect {
             VPNManager.shared.connect()
