@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install openfortivpn
+        run: brew install openfortivpn
+
+      - name: Build DMG
+        run: make dmg
+
+      - name: Verify bundle
+        run: |
+          echo "=== App contents ==="
+          ls -la .build/AutoForti.app/Contents/MacOS/
+          ls -la .build/AutoForti.app/Contents/Frameworks/
+          echo "=== dylib check ==="
+          otool -L .build/AutoForti.app/Contents/MacOS/openfortivpn
+          echo "=== DMG size ==="
+          ls -lh .build/AutoForti.dmg
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: .build/AutoForti.dmg
+          generate_release_notes: true
+          body: |
+            ## AutoForti ${{ github.ref_name }}
+
+            ### インストール方法
+            1. `AutoForti.dmg` をダウンロード
+            2. DMG を開き、AutoForti.app を Applications にドラッグ
+            3. アプリを起動（初回のみ管理者パスワードが必要）
+
+            ### 含まれるもの
+            - AutoForti.app (メニューバー VPN クライアント)
+            - openfortivpn (バンドル済み、別途インストール不要)
+            - OpenSSL (バンドル済み)
+
+            ### 必要環境
+            - macOS 14 (Sonoma) 以降
