@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Network
 
 enum VPNState: Sendable {
     case disconnected
@@ -44,12 +45,45 @@ final class VPNManager {
     private var process: Process?
     private var outputBuffer = ""
     private var tempConfigURL: URL?
+    private let networkMonitor = NWPathMonitor()
+    private let monitorQueue = DispatchQueue(label: "com.auto-forti.network-monitor")
 
     private var openfortivpnPath: String {
         SudoersManager.shared.openfortivpnPath
     }
 
-    private init() {}
+    private init() {
+        startNetworkMonitor()
+    }
+
+    private func startNetworkMonitor() {
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor in
+                guard let self, self.state.isConnected else { return }
+                NSLog("[AutoForti] Network path changed: \(path.status)")
+                // Check if openfortivpn process is still running
+                if let proc = self.process, proc.isRunning {
+                    // Process alive but network changed — verify tunnel via pgrep
+                    // openfortivpn typically exits on its own, give it a moment
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        if let proc = self.process, !proc.isRunning {
+                            return  // terminationHandler will handle state update
+                        }
+                        // Process still running but network may be down
+                        if path.status != .satisfied {
+                            NSLog("[AutoForti] Network lost while connected, terminating VPN")
+                            self.process?.terminate()
+                        }
+                    }
+                } else {
+                    // Process already gone, update state
+                    self.state = .disconnected
+                    self.process = nil
+                }
+            }
+        }
+        networkMonitor.start(queue: monitorQueue)
+    }
 
     func connect() {
         switch state {
