@@ -1,16 +1,24 @@
 import Foundation
 import Security
 
+struct VPNCredentials: Codable {
+    var server: String
+    var username: String
+    var password: String
+    var trustedCert: String?
+}
+
 @MainActor
 final class KeychainManager {
     static let shared = KeychainManager()
     private let service = "com.auto-forti.vpn"
+    private let account = "credentials"
 
     private init() {}
 
-    func save(account: String, value: String) -> Bool {
-        guard let data = value.data(using: .utf8) else { return false }
-        delete(account: account)
+    func saveCredentials(_ creds: VPNCredentials) -> Bool {
+        guard let data = try? JSONEncoder().encode(creds) else { return false }
+        deleteCredentials()
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -21,7 +29,7 @@ final class KeychainManager {
         return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
     }
 
-    func load(account: String) -> String? {
+    func loadCredentials() -> VPNCredentials? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -32,15 +40,15 @@ final class KeychainManager {
         var result: AnyObject?
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
               let data = result as? Data,
-              let string = String(data: data, encoding: .utf8)
+              let creds = try? JSONDecoder().decode(VPNCredentials.self, from: data)
         else {
             return nil
         }
-        return string
+        return creds
     }
 
     @discardableResult
-    func delete(account: String) -> Bool {
+    func deleteCredentials() -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -50,7 +58,6 @@ final class KeychainManager {
     }
 
     func hasCredentials() -> Bool {
-        load(account: "server") != nil && load(account: "username") != nil
-            && load(account: "password") != nil
+        loadCredentials() != nil
     }
 }

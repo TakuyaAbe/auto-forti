@@ -39,11 +39,12 @@ final class SetupWindowController {
         }
 
         // Pre-fill existing values
-        fields[0].stringValue = keychain.load(account: "server") ?? ""
+        let existing = keychain.loadCredentials()
+        fields[0].stringValue = existing?.server ?? ""
         fields[1].stringValue = String(config.port)
-        fields[2].stringValue = keychain.load(account: "username") ?? ""
-        fields[3].stringValue = keychain.load(account: "password") ?? ""
-        fields[4].stringValue = keychain.load(account: "trusted-cert") ?? ""
+        fields[2].stringValue = existing?.username ?? ""
+        fields[3].stringValue = existing?.password ?? ""
+        fields[4].stringValue = existing?.trustedCert ?? ""
         fields[4].placeholderString = "自動取得されます（空欄可）"
 
         let stackView = NSStackView()
@@ -118,12 +119,13 @@ final class SetupWindowController {
                 return
             }
 
-            _ = keychain.save(account: "server", value: server)
-            _ = keychain.save(account: "username", value: username)
-            _ = keychain.save(account: "password", value: password)
-            if !trustedCert.isEmpty {
-                _ = keychain.save(account: "trusted-cert", value: trustedCert)
-            }
+            let creds = VPNCredentials(
+                server: server,
+                username: username,
+                password: password,
+                trustedCert: trustedCert.isEmpty ? nil : trustedCert
+            )
+            _ = keychain.saveCredentials(creds)
             config.port = port
             config.autoConnect = autoConnectCheck.state == .on
 

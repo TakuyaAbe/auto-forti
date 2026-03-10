@@ -50,28 +50,23 @@ final class VPNManager {
             return
         }
 
-        let keychain = KeychainManager.shared
-        guard let server = keychain.load(account: "server"),
-              let username = keychain.load(account: "username"),
-              let password = keychain.load(account: "password")
-        else {
+        guard let creds = KeychainManager.shared.loadCredentials() else {
             state = .error("認証情報が未設定です")
             return
         }
 
         let port = ConfigManager.shared.port
-        let trustedCert = keychain.load(account: "trusted-cert")
 
         // Write temporary config file (avoids password in process list)
         let configURL = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("autoforti-\(UUID().uuidString).conf")
         var configContent = """
-        host = \(server)
+        host = \(creds.server)
         port = \(port)
-        username = \(username)
-        password = \(password)
+        username = \(creds.username)
+        password = \(creds.password)
         """
-        if let cert = trustedCert, !cert.isEmpty {
+        if let cert = creds.trustedCert, !cert.isEmpty {
             configContent += "\ntrusted-cert = \(cert)"
         }
 
@@ -237,7 +232,10 @@ final class VPNManager {
 
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
-            _ = KeychainManager.shared.save(account: "trusted-cert", value: hash)
+            if var creds = KeychainManager.shared.loadCredentials() {
+                creds.trustedCert = hash
+                _ = KeychainManager.shared.saveCredentials(creds)
+            }
             state = .disconnected
             // Reconnect with trusted cert
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
