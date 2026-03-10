@@ -40,6 +40,19 @@ final class VPNManager {
     private var outputBuffer = ""
     private var tempConfigURL: URL?
 
+    /// Resolve openfortivpn binary: bundled > homebrew
+    private var openfortivpnPath: String {
+        // Check inside app bundle first
+        if let bundlePath = Bundle.main.executableURL?
+            .deletingLastPathComponent()
+            .appendingPathComponent("openfortivpn").path,
+           FileManager.default.isExecutableFile(atPath: bundlePath) {
+            return bundlePath
+        }
+        // Fallback to homebrew
+        return "/opt/homebrew/bin/openfortivpn"
+    }
+
     private init() {}
 
     func connect() {
@@ -86,7 +99,7 @@ final class VPNManager {
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
-        proc.arguments = ["/opt/homebrew/bin/openfortivpn", "-c", configURL.path]
+        proc.arguments = [openfortivpnPath, "-c", configURL.path]
 
         let outPipe = Pipe()
         let errPipe = Pipe()

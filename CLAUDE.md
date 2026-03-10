@@ -5,7 +5,7 @@
 ```bash
 swift build              # debug build
 swift build -c release   # release build
-make dmg                 # build DMG for distribution
+make dmg                 # build DMG for distribution (includes openfortivpn)
 make run                 # build and run (debug)
 ```
 
@@ -13,7 +13,8 @@ make run                 # build and run (debug)
 
 - **Language**: Swift 6.0, AppKit (no SwiftUI, no Xcode)
 - **Build**: SPM (`Package.swift`), macOS 14+
-- **VPN Backend**: `openfortivpn` CLI at `/opt/homebrew/bin/openfortivpn`
+- **License**: GPL-3.0 (compatible with bundled openfortivpn)
+- **VPN Backend**: `openfortivpn` CLI, bundled in .app or fallback to `/opt/homebrew/bin/openfortivpn`
 - **UI**: Programmatic AppKit (NSStatusItem, NSWindow, NSMenu)
 - **App Type**: Menu bar only (`LSUIElement`, `.accessory` activation policy)
 
@@ -24,16 +25,20 @@ make run                 # build and run (debug)
 - **sudo**: sudoers configured on first launch via `osascript` (macOS admin dialog), cached in UserDefaults
 - **Process management**: `Process` + `Pipe` with async `readabilityHandler`. State machine: disconnected → connecting → connected → disconnecting
 - **Main menu**: Edit menu manually added for Cmd+C/V/X/A support (required for `.accessory` policy apps)
+- **Binary bundling**: openfortivpn + OpenSSL dylibs bundled in .app, rpath rewritten with `install_name_tool`, ad-hoc re-signed
+- **App icon**: Original design (NSBezierPath), no SF Symbols (Apple prohibits SF Symbols in app icons)
 
 ## File Overview
 
 | File | Role |
 |------|------|
 | `main.swift` | NSApplication entry point |
-| `AppDelegate.swift` | Init, sudoers check, wiring |
+| `AppDelegate.swift` | Init, sudoers check, welcome flow, wiring |
 | `StatusBarController.swift` | NSStatusItem + menu |
 | `VPNManager.swift` | openfortivpn process lifecycle |
 | `KeychainManager.swift` | Security framework, single JSON entry |
-| `ConfigManager.swift` | UserDefaults (port, autoConnect) |
+| `ConfigManager.swift` | UserDefaults (port, autoConnect, hasLaunched) |
 | `SetupWindowController.swift` | Settings window (NSWindow + NSTextField) |
+| `WelcomeWindowController.swift` | First-launch welcome screen |
 | `SudoersManager.swift` | Auto sudoers via osascript |
+| `Scripts/generate-icon.swift` | App icon generator (original design) |

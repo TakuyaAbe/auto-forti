@@ -4,10 +4,16 @@ BINARY_NAME = AutoForti
 BUILD_DIR = .build
 RELEASE_BINARY = $(BUILD_DIR)/release/$(BINARY_NAME)
 APP_BUNDLE = $(BUILD_DIR)/$(BINARY_NAME).app
+APP_MACOS = $(APP_BUNDLE)/Contents/MacOS
+APP_FRAMEWORKS = $(APP_BUNDLE)/Contents/Frameworks
+APP_RESOURCES = $(APP_BUNDLE)/Contents/Resources
 ICNS = $(BUILD_DIR)/$(BINARY_NAME).icns
 DMG_NAME = $(BINARY_NAME).dmg
 DMG_PATH = $(BUILD_DIR)/$(DMG_NAME)
 DMG_STAGING = $(BUILD_DIR)/dmg-staging
+
+OPENFORTIVPN = /opt/homebrew/bin/openfortivpn
+OPENSSL_LIB = /opt/homebrew/opt/openssl@3/lib
 
 build:
 	swift build
@@ -29,10 +35,36 @@ icon:
 	@swift Scripts/generate-icon.swift
 
 app-bundle: release icon
-	@mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
-	@mkdir -p "$(APP_BUNDLE)/Contents/Resources"
-	@cp $(RELEASE_BINARY) "$(APP_BUNDLE)/Contents/MacOS/$(BINARY_NAME)"
-	@cp $(ICNS) "$(APP_BUNDLE)/Contents/Resources/AppIcon.icns"
+	@rm -rf "$(APP_BUNDLE)"
+	@mkdir -p "$(APP_MACOS)" "$(APP_FRAMEWORKS)" "$(APP_RESOURCES)"
+	@# Copy main binary
+	@cp $(RELEASE_BINARY) "$(APP_MACOS)/$(BINARY_NAME)"
+	@# Bundle openfortivpn
+	@cp $(OPENFORTIVPN) "$(APP_MACOS)/openfortivpn"
+	@# Bundle OpenSSL dylibs
+	@cp $(OPENSSL_LIB)/libssl.3.dylib "$(APP_FRAMEWORKS)/"
+	@cp $(OPENSSL_LIB)/libcrypto.3.dylib "$(APP_FRAMEWORKS)/"
+	@# Fix openfortivpn dylib paths to use bundled libs
+	@install_name_tool -change \
+		$(OPENSSL_LIB)/libssl.3.dylib \
+		@executable_path/../Frameworks/libssl.3.dylib \
+		"$(APP_MACOS)/openfortivpn"
+	@install_name_tool -change \
+		$(OPENSSL_LIB)/libcrypto.3.dylib \
+		@executable_path/../Frameworks/libcrypto.3.dylib \
+		"$(APP_MACOS)/openfortivpn"
+	@# Fix libssl's reference to libcrypto
+	@install_name_tool -change \
+		$(OPENSSL_LIB)/libcrypto.3.dylib \
+		@executable_path/../Frameworks/libcrypto.3.dylib \
+		"$(APP_FRAMEWORKS)/libssl.3.dylib"
+	@# Re-sign modified binaries (ad-hoc)
+	@codesign --force --sign - "$(APP_FRAMEWORKS)/libcrypto.3.dylib"
+	@codesign --force --sign - "$(APP_FRAMEWORKS)/libssl.3.dylib"
+	@codesign --force --sign - "$(APP_MACOS)/openfortivpn"
+	@# Copy icon
+	@cp $(ICNS) "$(APP_RESOURCES)/AppIcon.icns"
+	@# Generate Info.plist
 	@/usr/bin/env python3 -c '\
 	import plistlib; \
 	pl = { \
