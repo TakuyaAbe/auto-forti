@@ -5,19 +5,29 @@ final class SudoersManager {
     static let shared = SudoersManager()
     private let sudoersFile = "/etc/sudoers.d/openfortivpn"
     private let openfortivpn = "/opt/homebrew/bin/openfortivpn"
+    private let setupDoneKey = "sudoers.setupDone"
 
     private init() {}
 
     /// Check if sudoers is already configured
     func isConfigured() -> Bool {
+        // Fast path: already confirmed in a previous launch
+        if UserDefaults.standard.bool(forKey: setupDoneKey) {
+            return true
+        }
+        // Actual check: can we run openfortivpn via sudo without password?
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
-        proc.arguments = ["-n", openfortivpn, "--version"]
+        proc.arguments = ["-n", "-l", openfortivpn]
         proc.standardOutput = FileHandle.nullDevice
         proc.standardError = FileHandle.nullDevice
         try? proc.run()
         proc.waitUntilExit()
-        return proc.terminationStatus == 0
+        let ok = proc.terminationStatus == 0
+        if ok {
+            UserDefaults.standard.set(true, forKey: setupDoneKey)
+        }
+        return ok
     }
 
     /// Setup sudoers using macOS admin password dialog (no terminal needed)
@@ -37,6 +47,10 @@ final class SudoersManager {
         proc.standardError = FileHandle.nullDevice
         try? proc.run()
         proc.waitUntilExit()
-        return proc.terminationStatus == 0
+        let ok = proc.terminationStatus == 0
+        if ok {
+            UserDefaults.standard.set(true, forKey: setupDoneKey)
+        }
+        return ok
     }
 }
