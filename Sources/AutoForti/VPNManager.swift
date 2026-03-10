@@ -40,17 +40,8 @@ final class VPNManager {
     private var outputBuffer = ""
     private var tempConfigURL: URL?
 
-    /// Resolve openfortivpn binary: bundled > homebrew
     private var openfortivpnPath: String {
-        // Check inside app bundle first
-        if let bundlePath = Bundle.main.executableURL?
-            .deletingLastPathComponent()
-            .appendingPathComponent("openfortivpn").path,
-           FileManager.default.isExecutableFile(atPath: bundlePath) {
-            return bundlePath
-        }
-        // Fallback to homebrew
-        return "/opt/homebrew/bin/openfortivpn"
+        SudoersManager.shared.openfortivpnPath
     }
 
     private init() {}
@@ -128,6 +119,8 @@ final class VPNManager {
                 outPipe.fileHandleForReading.readabilityHandler = nil
                 errPipe.fileHandleForReading.readabilityHandler = nil
                 self.cleanupTempConfig()
+                NSLog("[AutoForti] openfortivpn exited with status \(proc.terminationStatus)")
+                NSLog("[AutoForti] output: \(self.outputBuffer)")
                 if self.state.isConnected || self.state.displayName.starts(with: "切断") {
                     self.state = .disconnected
                 } else if case .connecting = self.state {
@@ -215,6 +208,7 @@ final class VPNManager {
 
     private func handleOutput(_ text: String) {
         outputBuffer += text
+        NSLog("[AutoForti] vpn: %@", text)
 
         if outputBuffer.contains("Tunnel is up and running") {
             state = .connected

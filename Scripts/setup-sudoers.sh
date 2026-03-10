@@ -6,20 +6,19 @@ set -euo pipefail
 
 SUDOERS_FILE="/etc/sudoers.d/openfortivpn"
 USER=$(logname 2>/dev/null || echo "$SUDO_USER")
-OPENFORTIVPN="/opt/homebrew/bin/openfortivpn"
+HOMEBREW="/opt/homebrew/bin/openfortivpn"
+BUNDLED="/Applications/AutoForti.app/Contents/MacOS/openfortivpn"
 
 if [ -z "$USER" ]; then
     echo "Error: Cannot determine username"
     exit 1
 fi
 
-if [ ! -f "$OPENFORTIVPN" ]; then
-    echo "Error: openfortivpn not found at $OPENFORTIVPN"
-    exit 1
-fi
-
-echo "$USER ALL=(ALL) NOPASSWD: $OPENFORTIVPN" > "$SUDOERS_FILE"
-echo "$USER ALL=(ALL) NOPASSWD: /usr/bin/killall openfortivpn" >> "$SUDOERS_FILE"
+{
+    echo "$USER ALL=(ALL) NOPASSWD: $HOMEBREW"
+    [ -f "$BUNDLED" ] && echo "$USER ALL=(ALL) NOPASSWD: $BUNDLED"
+    echo "$USER ALL=(ALL) NOPASSWD: /usr/bin/killall openfortivpn"
+} > "$SUDOERS_FILE"
 chmod 0440 "$SUDOERS_FILE"
 visudo -c -f "$SUDOERS_FILE"
 
