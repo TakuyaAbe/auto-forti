@@ -4,15 +4,25 @@ macOS メニューバーから FortiVPN にワンクリックで接続/切断で
 
 ## インストール
 
-### DMG から (推奨)
+### GitHub Releases から (推奨)
 
-```bash
-make dmg
-open .build/AutoForti.dmg
-# AutoForti.app を Applications にドラッグ
-```
+1. [Releases](https://github.com/TakuyaAbe/auto-forti/releases) から `AutoForti.dmg` をダウンロード
+2. DMG を開き、AutoForti.app を Applications にドラッグ
+3. **初回起動前に検疫属性を解除** (Apple Developer ID 未署名のため):
+   ```bash
+   xattr -cr /Applications/AutoForti.app
+   ```
+4. アプリを起動
 
 DMGには `openfortivpn` と OpenSSL がバンドル済みのため、別途インストールは不要です。
+
+### ソースからビルド
+
+```bash
+# 必要: macOS 14+, Swift 6.0+, openfortivpn (brew install openfortivpn)
+make dmg
+open .build/AutoForti.dmg
+```
 
 ### ビルドに必要な環境
 
