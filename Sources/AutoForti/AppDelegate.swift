@@ -33,6 +33,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.statusBarController.updateState(state)
         }
 
+        // Ensure sudoers is configured (shows macOS admin password dialog if needed)
+        if !SudoersManager.shared.isConfigured() {
+            let alert = NSAlert()
+            alert.messageText = "初期設定"
+            alert.informativeText = "VPN接続にはシステム権限の設定が必要です。\n管理者パスワードの入力を求められます。"
+            alert.addButton(withTitle: "設定する")
+            alert.addButton(withTitle: "終了")
+            alert.alertStyle = .informational
+
+            if alert.runModal() == .alertFirstButtonReturn {
+                if !SudoersManager.shared.setupWithAdminPrompt() {
+                    let errAlert = NSAlert()
+                    errAlert.messageText = "設定に失敗しました"
+                    errAlert.informativeText = "管理者権限の設定ができませんでした。\nアプリを終了します。"
+                    errAlert.alertStyle = .critical
+                    errAlert.runModal()
+                    NSApp.terminate(nil)
+                    return
+                }
+            } else {
+                NSApp.terminate(nil)
+                return
+            }
+        }
+
         // Check for existing openfortivpn process
         VPNManager.shared.checkExistingProcess()
 

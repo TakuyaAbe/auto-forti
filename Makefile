@@ -1,9 +1,12 @@
-.PHONY: build run release install setup clean app-bundle
+.PHONY: build run release install setup clean app-bundle dmg
 
 BINARY_NAME = AutoForti
 BUILD_DIR = .build
 RELEASE_BINARY = $(BUILD_DIR)/release/$(BINARY_NAME)
 APP_BUNDLE = $(BUILD_DIR)/$(BINARY_NAME).app
+DMG_NAME = $(BINARY_NAME).dmg
+DMG_PATH = $(BUILD_DIR)/$(DMG_NAME)
+DMG_STAGING = $(BUILD_DIR)/dmg-staging
 
 build:
 	swift build
@@ -39,6 +42,18 @@ app-bundle: release
 	import pathlib; \
 	pathlib.Path("$(APP_BUNDLE)/Contents/Info.plist").write_bytes(plistlib.dumps(pl))'
 	@echo "App bundle created at $(APP_BUNDLE)"
+
+dmg: app-bundle
+	@rm -rf "$(DMG_STAGING)" "$(DMG_PATH)"
+	@mkdir -p "$(DMG_STAGING)"
+	@cp -R "$(APP_BUNDLE)" "$(DMG_STAGING)/"
+	@ln -s /Applications "$(DMG_STAGING)/Applications"
+	@hdiutil create -volname "$(BINARY_NAME)" \
+		-srcfolder "$(DMG_STAGING)" \
+		-ov -format UDZO \
+		"$(DMG_PATH)"
+	@rm -rf "$(DMG_STAGING)"
+	@echo "DMG created at $(DMG_PATH)"
 
 clean:
 	swift package clean
