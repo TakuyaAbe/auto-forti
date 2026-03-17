@@ -101,12 +101,3 @@ final class WelcomeWindowController {
         NSApp.activate(ignoringOtherApps: true)
     }
 }
-
-@MainActor
-final class ButtonAction: NSObject {
-    private let handler: @MainActor () -> Void
-    init(_ handler: @escaping @MainActor () -> Void) {
-        self.handler = handler
-    }
-    @objc func doAction() { handler() }
-}

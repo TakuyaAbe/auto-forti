@@ -39,32 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.statusBarController.updateState(state)
         }
 
-        // Ensure sudoers is configured (shows macOS admin password dialog if needed)
-        if !SudoersManager.shared.isConfigured() {
-            let alert = NSAlert()
-            alert.messageText = L10n.initialSetupTitle
-            alert.informativeText = L10n.initialSetupMessage
-            alert.addButton(withTitle: L10n.configure)
-            alert.addButton(withTitle: L10n.quit)
-            alert.alertStyle = .informational
-
-            if alert.runModal() == .alertFirstButtonReturn {
-                if !SudoersManager.shared.setupWithAdminPrompt() {
-                    let errAlert = NSAlert()
-                    errAlert.messageText = L10n.setupFailedTitle
-                    errAlert.informativeText = L10n.setupFailedMessage
-                    errAlert.alertStyle = .critical
-                    errAlert.runModal()
-                    NSApp.terminate(nil)
-                    return
-                }
-            } else {
-                NSApp.terminate(nil)
-                return
-            }
-        }
-
-        // Check for existing openfortivpn process
+        // Check for existing VPN process/connection
         VPNManager.shared.checkExistingProcess()
 
         // First launch: show welcome screen

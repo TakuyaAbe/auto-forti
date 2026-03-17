@@ -1,6 +1,13 @@
 import AppKit
 import Foundation
 import Network
+import SystemConfiguration
+import Security
+
+enum VPNType: String, Sendable {
+    case ssl = "ssl"
+    case ipsec = "ipsec"
+}
 
 enum VPNState: Sendable {
     case disconnected
@@ -28,6 +35,11 @@ enum VPNState: Sendable {
         if case .disconnecting = self { return true }
         return false
     }
+
+    var isConnecting: Bool {
+        if case .connecting = self { return true }
+        return false
+    }
 }
 
 @MainActor
@@ -42,9 +54,17 @@ final class VPNManager {
 
     var onStateChange: (@MainActor @Sendable (VPNState) -> Void)?
 
+    // SSL VPN
     private var process: Process?
     private var outputBuffer = ""
     private var tempConfigURL: URL?
+
+    // IPSec VPN
+    private let ipsecServiceName = "AutoForti IPSec"
+    private var ipsecStatusTimer: Timer?
+
+    // Common
+    private var activeVPNType: VPNType = .ssl
     private let networkMonitor = NWPathMonitor()
     private let monitorQueue = DispatchQueue(label: "com.auto-forti.network-monitor")
 
@@ -61,29 +81,34 @@ final class VPNManager {
             Task { @MainActor in
                 guard let self, self.state.isConnected else { return }
                 NSLog("[AutoForti] Network path changed: \(path.status)")
-                // Check if openfortivpn process is still running
-                if let proc = self.process, proc.isRunning {
-                    // Process alive but network changed — verify tunnel via pgrep
-                    // openfortivpn typically exits on its own, give it a moment
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        if let proc = self.process, !proc.isRunning {
-                            return  // terminationHandler will handle state update
+
+                if self.activeVPNType == .ssl {
+                    if let proc = self.process, proc.isRunning {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            if let proc = self.process, !proc.isRunning {
+                                return
+                            }
+                            if path.status != .satisfied {
+                                NSLog("[AutoForti] Network lost while connected, terminating VPN")
+                                self.process?.terminate()
+                            }
                         }
-                        // Process still running but network may be down
-                        if path.status != .satisfied {
-                            NSLog("[AutoForti] Network lost while connected, terminating VPN")
-                            self.process?.terminate()
-                        }
+                    } else {
+                        self.state = .disconnected
+                        self.process = nil
                     }
                 } else {
-                    // Process already gone, update state
-                    self.state = .disconnected
-                    self.process = nil
+                    // IPSec: macOS handles disconnect, polling will catch state change
+                    if path.status != .satisfied {
+                        NSLog("[AutoForti] Network lost while IPSec connected")
+                    }
                 }
             }
         }
         networkMonitor.start(queue: monitorQueue)
     }
+
+    // MARK: - Public API
 
     func connect() {
         switch state {
@@ -98,9 +123,109 @@ final class VPNManager {
             return
         }
 
+        activeVPNType = ConfigManager.shared.vpnType
+
+        switch activeVPNType {
+        case .ssl:
+            connectSSL(creds: creds)
+        case .ipsec:
+            connectIPSec(creds: creds)
+        }
+    }
+
+    func disconnect() {
+        switch activeVPNType {
+        case .ssl:
+            disconnectSSL()
+        case .ipsec:
+            disconnectIPSec()
+        }
+    }
+
+    func toggle() {
+        switch state {
+        case .disconnected, .error:
+            connect()
+        case .connected:
+            disconnect()
+        default:
+            break
+        }
+    }
+
+    func cleanup() {
+        if activeVPNType == .ssl {
+            if let proc = process, proc.isRunning {
+                proc.terminate()
+                process = nil
+            }
+            cleanupTempConfig()
+            let killProc = Process()
+            killProc.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+            killProc.arguments = ["killall", "openfortivpn"]
+            killProc.standardOutput = FileHandle.nullDevice
+            killProc.standardError = FileHandle.nullDevice
+            try? killProc.run()
+        } else {
+            stopIPSecStatusPolling()
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/usr/sbin/scutil")
+            proc.arguments = ["--nc", "stop", ipsecServiceName]
+            proc.standardOutput = FileHandle.nullDevice
+            proc.standardError = FileHandle.nullDevice
+            try? proc.run()
+        }
+    }
+
+    func checkExistingProcess() {
+        // Check for existing openfortivpn process (SSL VPN)
+        let sslProc = Process()
+        sslProc.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        sslProc.arguments = ["openfortivpn"]
+        let sslPipe = Pipe()
+        sslProc.standardOutput = sslPipe
+        sslProc.standardError = FileHandle.nullDevice
+        try? sslProc.run()
+        sslProc.waitUntilExit()
+        if sslProc.terminationStatus == 0 {
+            activeVPNType = .ssl
+            state = .connected
+            return
+        }
+
+        // Check for existing IPSec VPN connection
+        let status = getIPSecStatus()
+        if status == "Connected" {
+            activeVPNType = .ipsec
+            state = .connected
+            startIPSecStatusPolling()
+        }
+    }
+
+    // MARK: - SSL VPN
+
+    private func connectSSL(creds: VPNCredentials) {
+        // Ensure sudoers is configured for openfortivpn
+        if !SudoersManager.shared.isConfigured() {
+            let alert = NSAlert()
+            alert.messageText = L10n.initialSetupTitle
+            alert.informativeText = L10n.initialSetupMessage
+            alert.addButton(withTitle: L10n.configure)
+            alert.addButton(withTitle: L10n.cancel)
+            alert.alertStyle = .informational
+
+            if alert.runModal() == .alertFirstButtonReturn {
+                if !SudoersManager.shared.setupWithAdminPrompt() {
+                    state = .error(L10n.setupFailedTitle)
+                    return
+                }
+            } else {
+                return
+            }
+        }
+
         let port = ConfigManager.shared.port
 
-        // Write temporary config file (avoids password in process list)
         let configURL = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("autoforti-\(UUID().uuidString).conf")
         var configContent = """
@@ -115,7 +240,6 @@ final class VPNManager {
 
         do {
             try configContent.write(to: configURL, atomically: true, encoding: .utf8)
-            // Restrict permissions to owner only
             try FileManager.default.setAttributes(
                 [.posixPermissions: 0o600], ofItemAtPath: configURL.path)
         } catch {
@@ -180,46 +304,19 @@ final class VPNManager {
         }
     }
 
-    func disconnect() {
+    private func disconnectSSL() {
         guard let proc = process, proc.isRunning else {
             state = .disconnected
             return
         }
         state = .disconnecting
-        proc.interrupt()  // SIGINT for graceful shutdown
+        proc.interrupt()
 
-        // Force kill after 5 seconds if still running
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
             if let proc = self?.process, proc.isRunning {
                 proc.terminate()
             }
         }
-    }
-
-    func toggle() {
-        switch state {
-        case .disconnected, .error:
-            connect()
-        case .connected:
-            disconnect()
-        default:
-            break
-        }
-    }
-
-    func cleanup() {
-        if let proc = process, proc.isRunning {
-            proc.terminate()
-            process = nil
-        }
-        cleanupTempConfig()
-        // Also kill any orphaned openfortivpn processes
-        let killProc = Process()
-        killProc.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
-        killProc.arguments = ["killall", "openfortivpn"]
-        killProc.standardOutput = FileHandle.nullDevice
-        killProc.standardError = FileHandle.nullDevice
-        try? killProc.run()
     }
 
     private func cleanupTempConfig() {
@@ -229,21 +326,265 @@ final class VPNManager {
         }
     }
 
-    func checkExistingProcess() {
+    // MARK: - IPSec VPN
+
+    private func connectIPSec(creds: VPNCredentials) {
+        state = .connecting
+
+        // Ensure VPN service exists in macOS network preferences
+        if !ipsecServiceExists() {
+            if !createIPSecService(server: creds.server) {
+                state = .error(L10n.ipsecServiceCreateFailed)
+                return
+            }
+            // Give macOS a moment to register the new service
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                self?.startIPSecConnection(creds: creds)
+            }
+            return
+        }
+
+        // Update server address if changed
+        updateIPSecServiceServer(creds.server)
+        startIPSecConnection(creds: creds)
+    }
+
+    private func startIPSecConnection(creds: VPNCredentials) {
         let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        proc.arguments = ["openfortivpn"]
+        proc.executableURL = URL(fileURLWithPath: "/usr/sbin/scutil")
+        var args = ["--nc", "start", ipsecServiceName,
+                    "--user", creds.username,
+                    "--password", creds.password]
+        if let secret = creds.sharedSecret, !secret.isEmpty {
+            args += ["--secret", secret]
+        }
+        proc.arguments = args
+        proc.standardOutput = FileHandle.nullDevice
+        proc.standardError = FileHandle.nullDevice
+
+        do {
+            try proc.run()
+            startIPSecStatusPolling()
+        } catch {
+            state = .error(L10n.processStartFailed(error.localizedDescription))
+        }
+    }
+
+    private func disconnectIPSec() {
+        state = .disconnecting
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/sbin/scutil")
+        proc.arguments = ["--nc", "stop", ipsecServiceName]
+        proc.standardOutput = FileHandle.nullDevice
+        proc.standardError = FileHandle.nullDevice
+        try? proc.run()
+        proc.waitUntilExit()
+
+        stopIPSecStatusPolling()
+        state = .disconnected
+    }
+
+    // MARK: - IPSec Status Polling
+
+    private func startIPSecStatusPolling() {
+        stopIPSecStatusPolling()
+        ipsecStatusTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.pollIPSecStatus()
+            }
+        }
+    }
+
+    private func stopIPSecStatusPolling() {
+        ipsecStatusTimer?.invalidate()
+        ipsecStatusTimer = nil
+    }
+
+    private func pollIPSecStatus() {
+        let status = getIPSecStatus()
+
+        switch status {
+        case "Connected":
+            if !state.isConnected {
+                state = .connected
+            }
+        case "Connecting":
+            break
+        case "Disconnecting":
+            if !state.isDisconnecting {
+                state = .disconnecting
+            }
+        default:
+            if state.isConnected || state.isConnecting {
+                state = .disconnected
+            }
+            stopIPSecStatusPolling()
+        }
+    }
+
+    private func getIPSecStatus() -> String {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/sbin/scutil")
+        proc.arguments = ["--nc", "status", ipsecServiceName]
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError = FileHandle.nullDevice
         try? proc.run()
         proc.waitUntilExit()
-        if proc.terminationStatus == 0 {
-            state = .connected
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8) ?? ""
+        return output.components(separatedBy: .newlines).first?
+            .trimmingCharacters(in: .whitespaces) ?? ""
+    }
+
+    // MARK: - IPSec Service Management (SystemConfiguration)
+
+    private func ipsecServiceExists() -> Bool {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/sbin/scutil")
+        proc.arguments = ["--nc", "list"]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        try? proc.run()
+        proc.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8) ?? ""
+        return output.contains("\"\(ipsecServiceName)\"")
+    }
+
+    private func createIPSecService(server: String) -> Bool {
+        var authRef: AuthorizationRef?
+        let flags: AuthorizationFlags = [.interactionAllowed, .preAuthorize, .extendRights]
+        let authStatus = AuthorizationCreate(nil, nil, flags, &authRef)
+        guard authStatus == errAuthorizationSuccess, let auth = authRef else {
+            NSLog("[AutoForti] Failed to create authorization: \(authStatus)")
+            return false
+        }
+        defer { AuthorizationFree(auth, []) }
+
+        guard let prefs = SCPreferencesCreateWithAuthorization(
+            nil, "AutoForti" as CFString, nil, auth
+        ) else {
+            NSLog("[AutoForti] Failed to create SCPreferences")
+            return false
+        }
+
+        guard SCPreferencesLock(prefs, true) else {
+            NSLog("[AutoForti] Failed to lock preferences")
+            return false
+        }
+        defer { SCPreferencesUnlock(prefs) }
+
+        // Create IPSec interface layered on IPv4
+        guard let ipsecInterface = SCNetworkInterfaceCreateWithInterface(
+            kSCNetworkInterfaceIPv4,
+            kSCNetworkInterfaceTypeIPSec
+        ) else {
+            NSLog("[AutoForti] Failed to create IPSec interface")
+            return false
+        }
+
+        guard let service = SCNetworkServiceCreate(prefs, ipsecInterface) else {
+            NSLog("[AutoForti] Failed to create network service")
+            return false
+        }
+
+        guard SCNetworkServiceSetName(service, ipsecServiceName as CFString) else {
+            NSLog("[AutoForti] Failed to set service name")
+            return false
+        }
+
+        // Configure IPSec settings
+        guard let serviceInterface = SCNetworkServiceGetInterface(service) else {
+            NSLog("[AutoForti] Failed to get service interface")
+            return false
+        }
+
+        let ipsecConfig: [String: Any] = [
+            "RemoteAddress": server,
+            "AuthenticationMethod": "SharedSecret",
+            "LocalIdentifierType": "KeyID",
+            "XAuthEnabled": 1 as Int,
+        ]
+
+        guard SCNetworkInterfaceSetConfiguration(serviceInterface, ipsecConfig as CFDictionary) else {
+            NSLog("[AutoForti] Failed to configure IPSec interface")
+            return false
+        }
+
+        // Add to current network set
+        guard let networkSet = SCNetworkSetCopyCurrent(prefs) else {
+            NSLog("[AutoForti] Failed to get current network set")
+            return false
+        }
+
+        guard SCNetworkSetAddService(networkSet, service) else {
+            NSLog("[AutoForti] Failed to add service to network set")
+            return false
+        }
+
+        guard SCPreferencesCommitChanges(prefs) else {
+            NSLog("[AutoForti] Failed to commit preferences")
+            return false
+        }
+
+        guard SCPreferencesApplyChanges(prefs) else {
+            NSLog("[AutoForti] Failed to apply preferences")
+            return false
+        }
+
+        NSLog("[AutoForti] IPSec VPN service created successfully")
+        return true
+    }
+
+    private func updateIPSecServiceServer(_ server: String) {
+        guard let prefs = SCPreferencesCreate(nil, "AutoForti" as CFString, nil) else { return }
+        guard let services = SCNetworkServiceCopyAll(prefs) as? [SCNetworkService] else { return }
+
+        for service in services {
+            guard let name = SCNetworkServiceGetName(service) as String?,
+                  name == ipsecServiceName,
+                  let intf = SCNetworkServiceGetInterface(service),
+                  let config = SCNetworkInterfaceGetConfiguration(intf) as? [String: Any],
+                  let currentServer = config["RemoteAddress"] as? String
+            else { continue }
+
+            if currentServer != server {
+                NSLog("[AutoForti] Server changed, recreating IPSec service")
+                removeIPSecService()
+                _ = createIPSecService(server: server)
+            }
+            return
         }
     }
 
-    // MARK: - Private
+    private func removeIPSecService() {
+        var authRef: AuthorizationRef?
+        let flags: AuthorizationFlags = [.interactionAllowed, .preAuthorize, .extendRights]
+        let authStatus = AuthorizationCreate(nil, nil, flags, &authRef)
+        guard authStatus == errAuthorizationSuccess, let auth = authRef else { return }
+        defer { AuthorizationFree(auth, []) }
+
+        guard let prefs = SCPreferencesCreateWithAuthorization(
+            nil, "AutoForti" as CFString, nil, auth
+        ) else { return }
+
+        guard SCPreferencesLock(prefs, true) else { return }
+        defer { SCPreferencesUnlock(prefs) }
+
+        guard let services = SCNetworkServiceCopyAll(prefs) as? [SCNetworkService] else { return }
+        for service in services {
+            if let name = SCNetworkServiceGetName(service) as String?, name == ipsecServiceName {
+                SCNetworkServiceRemove(service)
+            }
+        }
+        SCPreferencesCommitChanges(prefs)
+        SCPreferencesApplyChanges(prefs)
+    }
+
+    // MARK: - SSL VPN Output Handling
 
     private func handleOutput(_ text: String) {
         outputBuffer += text
@@ -255,7 +596,6 @@ final class VPNManager {
             state = .error(L10n.authFailed)
             process?.terminate()
         } else if outputBuffer.contains("ERROR") {
-            // Extract trusted cert hash from error for auto-setup
             if let range = outputBuffer.range(of: "--trusted-cert ") {
                 let afterFlag = outputBuffer[range.upperBound...]
                 let hash = String(afterFlag.prefix(while: { !$0.isWhitespace && !$0.isNewline }))
@@ -283,7 +623,6 @@ final class VPNManager {
                 _ = KeychainManager.shared.saveCredentials(creds)
             }
             state = .disconnected
-            // Reconnect with trusted cert
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
                 self?.connect()
             }

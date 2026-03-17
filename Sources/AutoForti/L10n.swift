@@ -71,6 +71,20 @@ enum L10n {
         "Server, username, and password are required.",
         "サーバー、ユーザー名、パスワードは必須です。")
 
+    // MARK: - VPN Type
+
+    static let vpnType = localized("VPN Type:", "VPN種別:")
+    static let sslVPN = localized("SSL VPN", "SSL VPN")
+    static let ipsecVPN = localized("IPSec VPN", "IPSec VPN")
+    static let trustedCert = localized("Trusted Cert:", "信頼済み証明書:")
+    static let sharedSecret = localized("Shared Secret:", "共有シークレット:")
+    static let ipsecServiceCreateFailed = localized(
+        "Failed to create IPSec VPN service",
+        "IPSec VPNサービスの作成に失敗しました")
+    static let ipsecFieldsRequired = localized(
+        "Server, username, password, and shared secret are required.",
+        "サーバー、ユーザー名、パスワード、共有シークレットは必須です。")
+
     // MARK: - Admin Setup Dialog
 
     static let initialSetupTitle = localized(

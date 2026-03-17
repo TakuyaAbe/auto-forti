@@ -6,6 +6,7 @@ struct VPNCredentials: Codable {
     var username: String
     var password: String
     var trustedCert: String?
+    var sharedSecret: String?
 }
 
 @MainActor

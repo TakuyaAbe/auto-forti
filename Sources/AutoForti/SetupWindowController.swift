@@ -13,7 +13,7 @@ final class SetupWindowController {
         }
 
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 360),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -27,26 +27,67 @@ final class SetupWindowController {
 
         let keychain = KeychainManager.shared
         let config = ConfigManager.shared
+        let existing = keychain.loadCredentials()
 
-        // Labels and fields
-        let labels = [L10n.server, L10n.port, L10n.username, L10n.password, "Trusted Cert:"]
-        let fields: [NSTextField] = labels.enumerated().map { index, _ in
-            let field = index == 3
-                ? NSSecureTextField(frame: .zero)
-                : NSTextField(frame: .zero)
+        // Helper to create a form row
+        func makeRow(label: String, field: NSView) -> NSStackView {
+            let row = NSStackView()
+            row.orientation = .horizontal
+            row.spacing = 8
+            let labelView = NSTextField(labelWithString: label)
+            labelView.alignment = .right
+            labelView.translatesAutoresizingMaskIntoConstraints = false
+            labelView.widthAnchor.constraint(equalToConstant: 130).isActive = true
             field.translatesAutoresizingMaskIntoConstraints = false
-            return field
+            if let tf = field as? NSTextField {
+                tf.widthAnchor.constraint(equalToConstant: 220).isActive = true
+            } else if let popup = field as? NSPopUpButton {
+                popup.translatesAutoresizingMaskIntoConstraints = false
+                popup.widthAnchor.constraint(equalToConstant: 220).isActive = true
+            }
+            row.addArrangedSubview(labelView)
+            row.addArrangedSubview(field)
+            return row
         }
 
-        // Pre-fill existing values
-        let existing = keychain.loadCredentials()
-        fields[0].stringValue = existing?.server ?? ""
-        fields[1].stringValue = String(config.port)
-        fields[2].stringValue = existing?.username ?? ""
-        fields[3].stringValue = existing?.password ?? ""
-        fields[4].stringValue = existing?.trustedCert ?? ""
-        fields[4].placeholderString = L10n.trustedCertPlaceholder
+        // VPN Type selector
+        let typePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        typePopup.addItems(withTitles: [L10n.sslVPN, L10n.ipsecVPN])
+        typePopup.selectItem(at: config.vpnType == .ipsec ? 1 : 0)
+        let typeRow = makeRow(label: L10n.vpnType, field: typePopup)
 
+        // Server
+        let serverField = NSTextField(frame: .zero)
+        serverField.stringValue = existing?.server ?? ""
+        let serverRow = makeRow(label: L10n.server, field: serverField)
+
+        // Port (SSL only)
+        let portField = NSTextField(frame: .zero)
+        portField.stringValue = String(config.port)
+        let portRow = makeRow(label: L10n.port, field: portField)
+
+        // Username
+        let usernameField = NSTextField(frame: .zero)
+        usernameField.stringValue = existing?.username ?? ""
+        let usernameRow = makeRow(label: L10n.username, field: usernameField)
+
+        // Password
+        let passwordField = NSSecureTextField(frame: .zero)
+        passwordField.stringValue = existing?.password ?? ""
+        let passwordRow = makeRow(label: L10n.password, field: passwordField)
+
+        // Trusted Cert (SSL only)
+        let trustedCertField = NSTextField(frame: .zero)
+        trustedCertField.stringValue = existing?.trustedCert ?? ""
+        trustedCertField.placeholderString = L10n.trustedCertPlaceholder
+        let trustedCertRow = makeRow(label: L10n.trustedCert, field: trustedCertField)
+
+        // Shared Secret (IPSec only)
+        let sharedSecretField = NSSecureTextField(frame: .zero)
+        sharedSecretField.stringValue = existing?.sharedSecret ?? ""
+        let sharedSecretRow = makeRow(label: L10n.sharedSecret, field: sharedSecretField)
+
+        // Stack view
         let stackView = NSStackView()
         stackView.orientation = .vertical
         stackView.alignment = .leading
@@ -54,29 +95,21 @@ final class SetupWindowController {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
 
-        for (i, labelText) in labels.enumerated() {
-            let row = NSStackView()
-            row.orientation = .horizontal
-            row.spacing = 8
-
-            let label = NSTextField(labelWithString: labelText)
-            label.alignment = .right
-            label.translatesAutoresizingMaskIntoConstraints = false
-            label.widthAnchor.constraint(equalToConstant: 100).isActive = true
-
-            row.addArrangedSubview(label)
-            row.addArrangedSubview(fields[i])
-            fields[i].widthAnchor.constraint(equalToConstant: 240).isActive = true
-
-            stackView.addArrangedSubview(row)
-        }
+        stackView.addArrangedSubview(typeRow)
+        stackView.addArrangedSubview(serverRow)
+        stackView.addArrangedSubview(portRow)
+        stackView.addArrangedSubview(usernameRow)
+        stackView.addArrangedSubview(passwordRow)
+        stackView.addArrangedSubview(trustedCertRow)
+        stackView.addArrangedSubview(sharedSecretRow)
 
         // Auto-connect checkbox
-        let autoConnectCheck = NSButton(checkboxWithTitle: L10n.autoConnectOnLaunch, target: nil, action: nil)
+        let autoConnectCheck = NSButton(
+            checkboxWithTitle: L10n.autoConnectOnLaunch, target: nil, action: nil)
         autoConnectCheck.state = config.autoConnect ? .on : .off
         stackView.addArrangedSubview(autoConnectCheck)
 
-        // Save button
+        // Buttons
         let buttonRow = NSStackView()
         buttonRow.orientation = .horizontal
         buttonRow.spacing = 8
@@ -102,49 +135,87 @@ final class SetupWindowController {
             stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
         ])
 
-        // Use closures via target-action pattern
-        let saveAction = SaveAction { [weak self, weak w] in
-            let server = fields[0].stringValue.trimmingCharacters(in: .whitespaces)
-            let port = Int(fields[1].stringValue) ?? 443
-            let username = fields[2].stringValue.trimmingCharacters(in: .whitespaces)
-            let password = fields[3].stringValue
-            let trustedCert = fields[4].stringValue.trimmingCharacters(in: .whitespaces)
+        // Update field visibility based on VPN type
+        func updateVisibility() {
+            let isIPSec = typePopup.indexOfSelectedItem == 1
+            portRow.isHidden = isIPSec
+            trustedCertRow.isHidden = isIPSec
+            sharedSecretRow.isHidden = !isIPSec
+        }
+        updateVisibility()
 
-            guard !server.isEmpty, !username.isEmpty, !password.isEmpty else {
-                let alert = NSAlert()
-                alert.messageText = L10n.inputError
-                alert.informativeText = L10n.fieldsRequired
-                alert.alertStyle = .warning
-                alert.runModal()
-                return
+        // Type change handler
+        let typeAction = ButtonAction { updateVisibility() }
+        typePopup.target = typeAction
+        typePopup.action = #selector(ButtonAction.doAction)
+
+        // Save handler
+        let saveAction = ButtonAction { [weak self, weak w] in
+            let isIPSec = typePopup.indexOfSelectedItem == 1
+            let server = serverField.stringValue.trimmingCharacters(in: .whitespaces)
+            let username = usernameField.stringValue.trimmingCharacters(in: .whitespaces)
+            let password = passwordField.stringValue
+
+            if isIPSec {
+                let sharedSecret = sharedSecretField.stringValue
+                guard !server.isEmpty, !username.isEmpty, !password.isEmpty,
+                      !sharedSecret.isEmpty else {
+                    let alert = NSAlert()
+                    alert.messageText = L10n.inputError
+                    alert.informativeText = L10n.ipsecFieldsRequired
+                    alert.alertStyle = .warning
+                    alert.runModal()
+                    return
+                }
+                let creds = VPNCredentials(
+                    server: server,
+                    username: username,
+                    password: password,
+                    sharedSecret: sharedSecret
+                )
+                _ = keychain.saveCredentials(creds)
+                config.vpnType = .ipsec
+            } else {
+                guard !server.isEmpty, !username.isEmpty, !password.isEmpty else {
+                    let alert = NSAlert()
+                    alert.messageText = L10n.inputError
+                    alert.informativeText = L10n.fieldsRequired
+                    alert.alertStyle = .warning
+                    alert.runModal()
+                    return
+                }
+                let port = Int(portField.stringValue) ?? 443
+                let trustedCert = trustedCertField.stringValue
+                    .trimmingCharacters(in: .whitespaces)
+                let creds = VPNCredentials(
+                    server: server,
+                    username: username,
+                    password: password,
+                    trustedCert: trustedCert.isEmpty ? nil : trustedCert
+                )
+                _ = keychain.saveCredentials(creds)
+                config.port = port
+                config.vpnType = .ssl
             }
 
-            let creds = VPNCredentials(
-                server: server,
-                username: username,
-                password: password,
-                trustedCert: trustedCert.isEmpty ? nil : trustedCert
-            )
-            _ = keychain.saveCredentials(creds)
-            config.port = port
             config.autoConnect = autoConnectCheck.state == .on
-
             w?.close()
             self?.window = nil
             self?.onSave?()
         }
 
-        let cancelAction = CancelAction { [weak self, weak w] in
+        let cancelAction = ButtonAction { [weak self, weak w] in
             w?.close()
             self?.window = nil
         }
 
         saveButton.target = saveAction
-        saveButton.action = #selector(SaveAction.doAction)
+        saveButton.action = #selector(ButtonAction.doAction)
         cancelButton.target = cancelAction
-        cancelButton.action = #selector(CancelAction.doAction)
+        cancelButton.action = #selector(ButtonAction.doAction)
 
         // Prevent deallocation
+        objc_setAssociatedObject(typePopup, "action", typeAction, .OBJC_ASSOCIATION_RETAIN)
         objc_setAssociatedObject(saveButton, "action", saveAction, .OBJC_ASSOCIATION_RETAIN)
         objc_setAssociatedObject(cancelButton, "action", cancelAction, .OBJC_ASSOCIATION_RETAIN)
 
@@ -155,18 +226,9 @@ final class SetupWindowController {
     }
 }
 
-// Helper classes for button actions
+// Helper class for button actions
 @MainActor
-final class SaveAction: NSObject {
-    private let handler: @MainActor () -> Void
-    init(_ handler: @escaping @MainActor () -> Void) {
-        self.handler = handler
-    }
-    @objc func doAction() { handler() }
-}
-
-@MainActor
-final class CancelAction: NSObject {
+final class ButtonAction: NSObject {
     private let handler: @MainActor () -> Void
     init(_ handler: @escaping @MainActor () -> Void) {
         self.handler = handler

@@ -8,6 +8,7 @@ final class ConfigManager {
     private let portKey = "vpn.port"
     private let autoConnectKey = "vpn.autoConnect"
     private let hasLaunchedKey = "app.hasLaunched"
+    private let vpnTypeKey = "vpn.type"
 
     private init() {}
 
@@ -27,5 +28,16 @@ final class ConfigManager {
     var hasLaunched: Bool {
         get { defaults.bool(forKey: hasLaunchedKey) }
         set { defaults.set(newValue, forKey: hasLaunchedKey) }
+    }
+
+    var vpnType: VPNType {
+        get {
+            if let raw = defaults.string(forKey: vpnTypeKey),
+               let type = VPNType(rawValue: raw) {
+                return type
+            }
+            return .ssl
+        }
+        set { defaults.set(newValue.rawValue, forKey: vpnTypeKey) }
     }
 }
